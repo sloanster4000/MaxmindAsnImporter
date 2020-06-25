@@ -20,7 +20,6 @@ import time
 import zipfile
 
 import requests
-
 from stealthwatch_client import StealthwatchClient
 
 # Config Paramters
@@ -31,7 +30,6 @@ ZIP_FILE_NAME = "maxmind_data.zip"
 
 # Set a wait interval (in seconds) - Default is one day
 INTERVAL = 86400
-
 
 ####################
 #    FUNCTIONS     #
@@ -83,21 +81,34 @@ def get_current_version():
 
     # Build the URL to request
     url = CONFIG_DATA["MAXMIND_VERSION_URL"] + "&license_key=" + CONFIG_DATA["MAXMIND_LICENSE_KEY"]
+    if args.proxy == False:
+        try:
+            # Fetch the version info from MaxMind
+            response = requests.get(url)
 
-    try:
-        # Fetch the version info from MaxMind
-        response = requests.get(url)
+            # Check to make sure the GET was successful
+            if response.status_code == 200:
 
-        # Check to make sure the GET was successful
-        if response.status_code == 200:
+                # Return the md5 of the current ASN database file
+                return response.content.decode('ascii')
+            
+        except Exception as err:
+            print("Error fetching version info from MaxMind: " + str(err))
+            exit(1)
 
-            # Return the md5 of the current ASN database file
-            return response.content.decode('ascii')
+    if args.proxy == True:
+        try:
+            # Fetch the version info from MaxMind
+            response = requests.get(url, proxies=proxies)
 
-    except Exception as err:
-        print("Error fetching version info from MaxMind: " + str(err))
-        exit(1)
+            # Check to make sure the GET was successful
+            if response.status_code == 200:
 
+                # Return the md5 of the current ASN database file
+                return response.content.decode('ascii')
+        except Exception as err:
+            print("Error fetching version info from MaxMind: " + str(err))
+            exit(1)
 
 def get_new_addresses():
     """Retrieve the latest IP address data from MaxMind and save the file."""
@@ -106,24 +117,43 @@ def get_new_addresses():
 
     # Build the URL to request
     url = CONFIG_DATA["MAXMIND_DATASET_URL"] + "&license_key=" + CONFIG_DATA["MAXMIND_LICENSE_KEY"]
+    if args.proxy == False:
+        try:
+            # Get the latest address feed from MaxMind
+            response = requests.get(url, allow_redirects=True)
 
-    try:
-        # Get the latest address feed from MaxMind
-        response = requests.get(url, allow_redirects=True)
+            # If the request was successful
+            if response.status_code >= 200 or response.status_code < 300:
 
-        # If the request was successful
-        if response.status_code >= 200 or response.status_code < 300:
+                # Write downloaded zip file to disk
+                open(ZIP_FILE_NAME, 'wb').write(response.content)
 
-            # Write downloaded zip file to disk
-            open(ZIP_FILE_NAME, 'wb').write(response.content)
+            else:
+                print("Failed to get data from MaxMind. Terminating.")
+                exit()
 
-        else:
-            print("Failed to get data from MaxMind. Terminating.")
+        except Exception as err:
+            print("Unable to get the MaxMind ASN data - Error: {}".format(err))
             exit()
 
-    except Exception as err:
-        print("Unable to get the MaxMind ASN data - Error: {}".format(err))
-        exit()
+    if args.proxy == True:
+        try:
+            # Get the latest address feed from MaxMind
+            response = requests.get(url, allow_redirects=True, proxies=proxies)
+
+            # If the request was successful
+            if response.status_code >= 200 or response.status_code < 300:
+
+                # Write downloaded zip file to disk
+                open(ZIP_FILE_NAME, 'wb').write(response.content)
+
+            else:
+                print("Failed to get data from MaxMind. Terminating.")
+                exit()
+
+        except Exception as err:
+            print("Unable to get the MaxMind ASN data - Error: {}".format(err))
+            exit()
 
 
 def search_maxmind_data():
@@ -323,7 +353,24 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="A script to import MaxMind ASN data into Stealthwatch")
     parser.add_argument("-f", "--file", help="Configuration file to use (Default: config.json)" )
     parser.add_argument("-d", "--daemon", help="Run the script as a daemon", action="store_true")
+    parser.add_argument("-p", "--proxy", help="Settings to use web proxy", action="store_true")
     args = parser.parse_args()
+
+    # Prompt for proxy information
+    if args.proxy:
+        print("Please provide Proxy server information")
+        PROXY = input()
+        print("Please provide Proxy server port information")
+        PORT = input() 
+        print("Please provide user name")
+        USER = input()
+        print("Please provide Password")
+        PW = getpass.getpass()
+
+        proxies = {
+            'http': 'http://{}:{}@{}:{}/'.format(USER, PW, PROXY, PORT),
+            'https': 'http://{}:{}@{}:{}/'.format(USER, PW, PROXY, PORT),
+            }
 
     # If a different config file is specified, use it
     if args.file:
